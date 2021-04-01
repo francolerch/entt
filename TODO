@@ -7,6 +7,7 @@
 * custom pools example (multi instance, tables, enable/disable, and so on...)
 
 WIP:
+* HP: remove view each<T>(F), each<T>()
 * HP: scheduler, use any (or poly?) instead of unique_ptr
 * HP: resource, forward the id to the loader from the cache and if constexpr the call to load, update doc and describe customization points
 * HP: make it possible to create views of the type `view<T, T>`, add get by index and such, allow to register custom pools by name with the registry
