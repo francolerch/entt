@@ -10,3 +10,6 @@ CMakeSettings.json
 
 # Bazel
 /bazel-*
+bin-int
+*filters
+*vcxproj
