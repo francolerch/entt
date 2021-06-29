@@ -7,6 +7,14 @@
 #endif
 
 
+#if defined(__cpp_lib_launder) && __cpp_lib_launder >= 201606L
+#   include <new>
+#   define ENTT_LAUNDER(expr) std::launder(expr)
+#else
+#   define ENTT_LAUNDER(expr) expr
+#endif
+
+
 #ifndef ENTT_USE_ATOMIC
 #   define ENTT_MAYBE_ATOMIC(Type) Type
 #else
@@ -21,10 +29,17 @@
 #endif
 
 
-#ifdef ENTT_PAGE_SIZE
-static_assert(ENTT_PAGE_SIZE && ((ENTT_PAGE_SIZE & (ENTT_PAGE_SIZE - 1)) == 0), "ENTT_PAGE_SIZE must be a power of two");
+#ifdef ENTT_SPARSE_PAGE
+	static_assert(ENTT_SPARSE_PAGE && ((ENTT_SPARSE_PAGE & (ENTT_SPARSE_PAGE - 1)) == 0), "ENTT_SPARSE_PAGE must be a power of two");
 #else
-#   define ENTT_PAGE_SIZE 4096
+#   define ENTT_SPARSE_PAGE 4096
+#endif
+
+
+#ifdef ENTT_PACKED_PAGE
+static_assert(ENTT_PACKED_PAGE && ((ENTT_PACKED_PAGE & (ENTT_PACKED_PAGE - 1)) == 0), "ENTT_PACKED_PAGE must be a power of two");
+#else
+#   define ENTT_PACKED_PAGE 1024
 #endif
 
 
@@ -33,7 +48,7 @@ static_assert(ENTT_PAGE_SIZE && ((ENTT_PAGE_SIZE & (ENTT_PAGE_SIZE - 1)) == 0), 
 #   define ENTT_ASSERT(...) (void(0))
 #elif !defined ENTT_ASSERT
 #   include <cassert>
-#   define ENTT_ASSERT(condition) assert(condition)
+#   define ENTT_ASSERT(condition, ...) assert(condition)
 #endif
 
 

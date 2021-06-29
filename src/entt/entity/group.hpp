@@ -208,7 +208,7 @@ public:
      *
      * @return A pointer to the array of entities.
      */
-    [[nodiscard]] const entity_type * data() const ENTT_NOEXCEPT {
+    [[nodiscard]] auto data() const ENTT_NOEXCEPT {
         return *this ? handler->data() : nullptr;
     }
 
@@ -339,7 +339,7 @@ public:
      */
     template<typename... Component>
     [[nodiscard]] decltype(auto) get(const entity_type entt) const {
-        ENTT_ASSERT(contains(entt));
+        ENTT_ASSERT(contains(entt), "Group does not contain entity");
 
         if constexpr(sizeof...(Component) == 0) {
             return std::tuple_cat(get_as_tuple(*std::get<storage_type<Get> *>(pools), entt)...);
@@ -681,11 +681,7 @@ public:
     }
 
     /**
-     * @brief Direct access to the list of components of a given pool.
-     *
-     * The returned pointer is such that range
-     * `[raw<Component>(), raw<Component>() + size())` is always a valid range,
-     * even if the container is empty.<br/>
+     * @brief Direct access to the raw representation offered by the storage.
      *
      * @warning
      * This function is only available for owned types.
@@ -694,10 +690,10 @@ public:
      * @return A pointer to the array of components.
      */
     template<typename Component>
-    [[nodiscard]] Component * raw() const ENTT_NOEXCEPT {
+    [[nodiscard]] auto raw() const ENTT_NOEXCEPT {
         static_assert((std::is_same_v<Component, Owned> || ...), "Non-owned type");
         auto *cpool = std::get<storage_type<Component> *>(pools);
-        return cpool ? cpool->raw() : nullptr;
+        return cpool ? cpool->raw() : decltype(cpool->raw()){};
     }
 
     /**
@@ -708,7 +704,7 @@ public:
      *
      * @return A pointer to the array of entities.
      */
-    [[nodiscard]] const entity_type * data() const ENTT_NOEXCEPT {
+    [[nodiscard]] auto data() const ENTT_NOEXCEPT {
         return *this ? std::get<0>(pools)->data() : nullptr;
     }
 
@@ -839,7 +835,7 @@ public:
      */
     template<typename... Component>
     [[nodiscard]] decltype(auto) get(const entity_type entt) const {
-        ENTT_ASSERT(contains(entt));
+        ENTT_ASSERT(contains(entt), "Group does not contain entity");
 
         if constexpr(sizeof...(Component) == 0) {
             return std::tuple_cat(get_as_tuple(*std::get<storage_type<Owned> *>(pools), entt)..., get_as_tuple(*std::get<storage_type<Get> *>(pools), entt)...);
@@ -940,7 +936,7 @@ public:
     template<typename... Component, typename Compare, typename Sort = std_sort, typename... Args>
     void sort(Compare compare, Sort algo = Sort{}, Args &&... args) const {
         auto *cpool = std::get<0>(pools);
-        
+
         if constexpr(sizeof...(Component) == 0) {
             static_assert(std::is_invocable_v<Compare, const entity_type, const entity_type>, "Invalid comparison function");
             cpool->sort_n(*length, std::move(compare), std::move(algo), std::forward<Args>(args)...);
@@ -953,7 +949,7 @@ public:
                 return compare(std::forward_as_tuple(std::get<storage_type<Component> *>(pools)->get(lhs)...), std::forward_as_tuple(std::get<storage_type<Component> *>(pools)->get(rhs)...));
             }, std::move(algo), std::forward<Args>(args)...);
         }
-        
+
         [this](auto *head, auto *... other) {
             for(auto next = *length; next; --next) {
                 const auto pos = next - 1;

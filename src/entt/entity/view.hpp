@@ -436,7 +436,7 @@ public:
      */
     template<typename... Comp>
     [[nodiscard]] decltype(auto) get([[maybe_unused]] const entity_type entt) const {
-        ENTT_ASSERT(contains(entt));
+        ENTT_ASSERT(contains(entt), "View does not contain entity");
 
         if constexpr(sizeof...(Comp) == 0) {
             return std::tuple_cat(get_as_tuple(*std::get<storage_type<Component> *>(pools), entt)...);
@@ -587,11 +587,11 @@ template<typename Entity, typename Component>
 class basic_view<Entity, exclude_t<>, Component> final {
     using storage_type = constness_as_t<typename storage_traits<Entity, std::remove_const_t<Component>>::storage_type, Component>;
 
-    class iterable_view {
+    class iterable_view final {
         friend class basic_view<Entity, exclude_t<>, Component>;
 
         template<typename... It>
-        class iterable_view_iterator {
+        class iterable_view_iterator final {
             friend class iterable_view;
 
             template<typename... Discard>
@@ -668,8 +668,6 @@ class basic_view<Entity, exclude_t<>, Component> final {
     };
 
 public:
-    /*! @brief Type of component iterated by the view. */
-    using raw_type = Component;
     /*! @brief Underlying entity identifier. */
     using entity_type = Entity;
     /*! @brief Unsigned integer type. */
@@ -681,7 +679,8 @@ public:
 
     /*! @brief Default constructor to use to create empty, invalid views. */
     basic_view() ENTT_NOEXCEPT
-        : pools{}
+        : pools{},
+          filter{}
     {}
 
     /**
@@ -689,7 +688,8 @@ public:
      * @param ref The storage for the type to iterate.
      */
     basic_view(storage_type &ref) ENTT_NOEXCEPT
-        : pools{&ref}
+        : pools{&ref},
+          filter{}
     {}
 
     /**
@@ -709,14 +709,10 @@ public:
     }
 
     /**
-     * @brief Direct access to the list of components.
-     *
-     * The returned pointer is such that range `[raw(), raw() + size())` is
-     * always a valid range, even if the container is empty.
-     *
+     * @brief Direct access to the raw representation offered by the storage.
      * @return A pointer to the array of components.
      */
-    [[nodiscard]] raw_type * raw() const ENTT_NOEXCEPT {
+    [[nodiscard]] auto raw() const ENTT_NOEXCEPT {
         return std::get<0>(pools)->raw();
     }
 
@@ -728,7 +724,7 @@ public:
      *
      * @return A pointer to the array of entities.
      */
-    [[nodiscard]] const entity_type * data() const ENTT_NOEXCEPT {
+    [[nodiscard]] auto data() const ENTT_NOEXCEPT {
         return std::get<0>(pools)->data();
     }
 
@@ -858,7 +854,7 @@ public:
      */
     template<typename... Comp>
     [[nodiscard]] decltype(auto) get(const entity_type entt) const {
-        ENTT_ASSERT(contains(entt));
+        ENTT_ASSERT(contains(entt), "View does not contain entity");
 
         if constexpr(sizeof...(Comp) == 0) {
             return get_as_tuple(*std::get<0>(pools), entt);
@@ -956,7 +952,7 @@ private:
  * @param storage The storage for the types to iterate.
  */
 template<typename... Storage>
-basic_view(Storage &... storage) ENTT_NOEXCEPT
+basic_view(Storage &... storage)
 -> basic_view<std::common_type_t<typename Storage::entity_type...>, entt::exclude_t<>, constness_as_t<typename Storage::value_type, Storage>...>;
 
 

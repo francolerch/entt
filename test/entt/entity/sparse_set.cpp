@@ -24,6 +24,11 @@ TEST(SparseSet, Functionalities) {
     ASSERT_FALSE(set.contains(entt::entity{0}));
     ASSERT_FALSE(set.contains(entt::entity{42}));
 
+    set.reserve(0);
+
+    ASSERT_EQ(set.capacity(), 42u);
+    ASSERT_TRUE(set.empty());
+
     set.emplace(entt::entity{42});
 
     ASSERT_FALSE(set.empty());
@@ -37,7 +42,7 @@ TEST(SparseSet, Functionalities) {
     ASSERT_EQ(set.at(1u), static_cast<entt::entity>(entt::null));
     ASSERT_EQ(set[0u], entt::entity{42});
 
-    set.remove(entt::entity{42});
+    set.erase(entt::entity{42});
 
     ASSERT_TRUE(set.empty());
     ASSERT_EQ(set.size(), 0u);
@@ -56,67 +61,80 @@ TEST(SparseSet, Functionalities) {
     ASSERT_EQ(set.at(1u), static_cast<entt::entity>(entt::null));
     ASSERT_EQ(set[0u], entt::entity{42});
 
+    set.clear();
+
+    ASSERT_TRUE(set.empty());
+    ASSERT_EQ(set.size(), 0u);
+    ASSERT_EQ(std::as_const(set).begin(), std::as_const(set).end());
+    ASSERT_EQ(set.begin(), set.end());
+    ASSERT_FALSE(set.contains(entt::entity{0}));
+    ASSERT_FALSE(set.contains(entt::entity{42}));
+}
+
+TEST(SparseSet, Move) {
+    entt::sparse_set set;
+    set.emplace(entt::entity{42});
+
     ASSERT_TRUE(std::is_move_constructible_v<decltype(set)>);
     ASSERT_TRUE(std::is_move_assignable_v<decltype(set)>);
 
     entt::sparse_set other{std::move(set)};
 
+    ASSERT_TRUE(set.empty());
+    ASSERT_FALSE(other.empty());
+    ASSERT_EQ(set.at(0u), static_cast<entt::entity>(entt::null));
+    ASSERT_EQ(other.at(0u), entt::entity{42});
+
     set = std::move(other);
+
+    ASSERT_FALSE(set.empty());
+    ASSERT_TRUE(other.empty());
+    ASSERT_EQ(set.at(0u), entt::entity{42});
+    ASSERT_EQ(other.at(0u), static_cast<entt::entity>(entt::null));
+
+    other = entt::sparse_set{};
+    other.emplace(entt::entity{3});
     other = std::move(set);
 
     ASSERT_TRUE(set.empty());
-    ASSERT_EQ(set.at(0u), static_cast<entt::entity>(entt::null));
-
     ASSERT_FALSE(other.empty());
-    ASSERT_EQ(other.index(entt::entity{42}), 0u);
+    ASSERT_EQ(set.at(0u), static_cast<entt::entity>(entt::null));
     ASSERT_EQ(other.at(0u), entt::entity{42});
-    ASSERT_EQ(other.at(1u), static_cast<entt::entity>(entt::null));
-    ASSERT_EQ(other[0u], entt::entity{42});
-
-    other.clear();
-
-    ASSERT_TRUE(other.empty());
-    ASSERT_EQ(other.size(), 0u);
-    ASSERT_EQ(std::as_const(other).begin(), std::as_const(other).end());
-    ASSERT_EQ(other.begin(), other.end());
-    ASSERT_FALSE(other.contains(entt::entity{0}));
-    ASSERT_FALSE(other.contains(entt::entity{42}));
 }
 
 TEST(SparseSet, Pagination) {
     entt::sparse_set set;
-    constexpr auto page_size = ENTT_PAGE_SIZE;
 
     ASSERT_EQ(set.extent(), 0u);
 
-    set.emplace(entt::entity{page_size-1});
+    set.emplace(entt::entity{ENTT_SPARSE_PAGE-1u});
 
-    ASSERT_EQ(set.extent(), page_size);
-    ASSERT_TRUE(set.contains(entt::entity{page_size-1}));
+    ASSERT_EQ(set.extent(), ENTT_SPARSE_PAGE);
+    ASSERT_TRUE(set.contains(entt::entity{ENTT_SPARSE_PAGE-1u}));
 
-    set.emplace(entt::entity{page_size});
+    set.emplace(entt::entity{ENTT_SPARSE_PAGE});
 
-    ASSERT_EQ(set.extent(), 2 * page_size);
-    ASSERT_TRUE(set.contains(entt::entity{page_size-1}));
-    ASSERT_TRUE(set.contains(entt::entity{page_size}));
-    ASSERT_FALSE(set.contains(entt::entity{page_size+1}));
+    ASSERT_EQ(set.extent(), 2 * ENTT_SPARSE_PAGE);
+    ASSERT_TRUE(set.contains(entt::entity{ENTT_SPARSE_PAGE-1u}));
+    ASSERT_TRUE(set.contains(entt::entity{ENTT_SPARSE_PAGE}));
+    ASSERT_FALSE(set.contains(entt::entity{ENTT_SPARSE_PAGE+1u}));
 
-    set.remove(entt::entity{page_size-1});
+    set.erase(entt::entity{ENTT_SPARSE_PAGE-1u});
 
-    ASSERT_EQ(set.extent(), 2 * page_size);
-    ASSERT_FALSE(set.contains(entt::entity{page_size-1}));
-    ASSERT_TRUE(set.contains(entt::entity{page_size}));
-
-    set.shrink_to_fit();
-    set.remove(entt::entity{page_size});
-
-    ASSERT_EQ(set.extent(), 2 * page_size);
-    ASSERT_FALSE(set.contains(entt::entity{page_size-1}));
-    ASSERT_FALSE(set.contains(entt::entity{page_size}));
+    ASSERT_EQ(set.extent(), 2 * ENTT_SPARSE_PAGE);
+    ASSERT_FALSE(set.contains(entt::entity{ENTT_SPARSE_PAGE-1u}));
+    ASSERT_TRUE(set.contains(entt::entity{ENTT_SPARSE_PAGE}));
 
     set.shrink_to_fit();
+    set.erase(entt::entity{ENTT_SPARSE_PAGE});
 
-    ASSERT_EQ(set.extent(), 0u);
+    ASSERT_EQ(set.extent(), 2 * ENTT_SPARSE_PAGE);
+    ASSERT_FALSE(set.contains(entt::entity{ENTT_SPARSE_PAGE-1u}));
+    ASSERT_FALSE(set.contains(entt::entity{ENTT_SPARSE_PAGE}));
+
+    set.shrink_to_fit();
+
+    ASSERT_EQ(set.extent(), 2 * ENTT_SPARSE_PAGE);
 }
 
 TEST(SparseSet, Insert) {
@@ -127,6 +145,7 @@ TEST(SparseSet, Insert) {
     entities[1] = entt::entity{42};
 
     set.emplace(entt::entity{12});
+    set.insert(std::end(entities), std::end(entities));
     set.insert(std::begin(entities), std::end(entities));
     set.emplace(entt::entity{24});
 
@@ -149,6 +168,45 @@ TEST(SparseSet, Insert) {
     ASSERT_EQ(set.data()[set.index(entt::entity{24})], entt::entity{24});
 }
 
+TEST(SparseSet, Erase) {
+    entt::sparse_set set;
+    entt::entity entities[3];
+
+    entities[0] = entt::entity{3};
+    entities[1] = entt::entity{42};
+    entities[2] = entt::entity{9};
+
+    ASSERT_TRUE(set.empty());
+
+    ASSERT_DEATH(set.erase(std::begin(entities), std::end(entities)), "");
+    ASSERT_DEATH(set.erase(entities[1]), "");
+
+    ASSERT_TRUE(set.empty());
+
+    set.insert(std::begin(entities), std::end(entities));
+    set.erase(set.begin(), set.end());
+
+    ASSERT_TRUE(set.empty());
+
+    set.insert(std::begin(entities), std::end(entities));
+    set.erase(entities, entities + 2u);
+
+    ASSERT_FALSE(set.empty());
+    ASSERT_EQ(*set.begin(), entt::entity{9});
+
+    set.erase(entities[2]);
+
+    ASSERT_DEATH(set.erase(entities[2]), "");
+    ASSERT_TRUE(set.empty());
+
+    set.insert(std::begin(entities), std::end(entities));
+    std::swap(entities[1], entities[2]);
+    set.erase(entities, entities + 2u);
+
+    ASSERT_FALSE(set.empty());
+    ASSERT_EQ(*set.begin(), entt::entity{42});
+}
+
 TEST(SparseSet, Remove) {
     entt::sparse_set set;
     entt::entity entities[3];
@@ -157,27 +215,37 @@ TEST(SparseSet, Remove) {
     entities[1] = entt::entity{42};
     entities[2] = entt::entity{9};
 
-    set.insert(std::begin(entities), std::end(entities));
-    set.remove(set.begin(), set.end());
+    ASSERT_TRUE(set.empty());
+
+    ASSERT_EQ(set.remove(std::begin(entities), std::end(entities)), 0u);
+    ASSERT_EQ(set.remove(entities[1]), 0u);
 
     ASSERT_TRUE(set.empty());
 
     set.insert(std::begin(entities), std::end(entities));
-    set.remove(set.begin(), set.end());
 
+    ASSERT_EQ(set.remove(set.begin(), set.end()), 3u);
     ASSERT_TRUE(set.empty());
 
     set.insert(std::begin(entities), std::end(entities));
-    set.remove(entities, entities + 2u);
 
+    ASSERT_EQ(set.remove(entities, entities + 2u), 2u);
     ASSERT_FALSE(set.empty());
     ASSERT_EQ(*set.begin(), entt::entity{9});
 
-    set.clear();
+    ASSERT_EQ(set.remove(entities[2]), 1u);
+    ASSERT_EQ(set.remove(entities[2]), 0u);
+    ASSERT_TRUE(set.empty());
+
+    set.insert(entities, entities + 2u);
+
+    ASSERT_EQ(set.remove(std::begin(entities), std::end(entities)), 2u);
+    ASSERT_TRUE(set.empty());
+
     set.insert(std::begin(entities), std::end(entities));
     std::swap(entities[1], entities[2]);
-    set.remove(entities, entities + 2u);
 
+    ASSERT_EQ(set.remove(entities, entities + 2u), 2u);
     ASSERT_FALSE(set.empty());
     ASSERT_EQ(*set.begin(), entt::entity{42});
 }

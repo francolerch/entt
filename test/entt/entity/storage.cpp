@@ -24,18 +24,34 @@ struct throwing_component {
     int data;
 };
 
+struct update_from_destructor {
+    ~update_from_destructor() {
+        if(target != entt::null) {
+            storage->erase(target);
+        }
+    }
+
+    entt::storage<update_from_destructor> *storage{};
+    entt::entity target{entt::null};
+};
+
 TEST(Storage, Functionalities) {
     entt::storage<int> pool;
 
     pool.reserve(42);
 
-    ASSERT_EQ(pool.capacity(), 42u);
+    ASSERT_EQ(pool.capacity(), ENTT_PACKED_PAGE);
     ASSERT_TRUE(pool.empty());
     ASSERT_EQ(pool.size(), 0u);
     ASSERT_EQ(std::as_const(pool).begin(), std::as_const(pool).end());
     ASSERT_EQ(pool.begin(), pool.end());
     ASSERT_FALSE(pool.contains(entt::entity{0}));
     ASSERT_FALSE(pool.contains(entt::entity{41}));
+
+    pool.reserve(0);
+
+    ASSERT_EQ(pool.capacity(), ENTT_PACKED_PAGE);
+    ASSERT_TRUE(pool.empty());
 
     pool.emplace(entt::entity{41}, 3);
 
@@ -47,7 +63,7 @@ TEST(Storage, Functionalities) {
     ASSERT_TRUE(pool.contains(entt::entity{41}));
     ASSERT_EQ(pool.get(entt::entity{41}), 3);
 
-    pool.remove(entt::entity{41});
+    pool.erase(entt::entity{41});
 
     ASSERT_TRUE(pool.empty());
     ASSERT_EQ(pool.size(), 0u);
@@ -69,15 +85,45 @@ TEST(Storage, Functionalities) {
     ASSERT_FALSE(pool.contains(entt::entity{0}));
     ASSERT_FALSE(pool.contains(entt::entity{41}));
 
-    ASSERT_EQ(pool.capacity(), 42u);
+    ASSERT_EQ(pool.capacity(), ENTT_PACKED_PAGE);
 
     pool.shrink_to_fit();
 
     ASSERT_EQ(pool.capacity(), 0u);
+}
 
-    (void)entt::storage<int>{std::move(pool)};
-    entt::storage<int> other;
+TEST(Storage, Move) {
+    entt::storage<int> pool;
+    pool.emplace(entt::entity{3}, 3);
+
+    ASSERT_TRUE(std::is_move_constructible_v<decltype(pool)>);
+    ASSERT_TRUE(std::is_move_assignable_v<decltype(pool)>);
+
+    entt::storage<int> other{std::move(pool)};
+
+    ASSERT_TRUE(pool.empty());
+    ASSERT_FALSE(other.empty());
+    ASSERT_EQ(pool.at(0u), static_cast<entt::entity>(entt::null));
+    ASSERT_EQ(other.at(0u), entt::entity{3});
+    ASSERT_EQ(other.get(entt::entity{3}), 3);
+
+    pool = std::move(other);
+
+    ASSERT_FALSE(pool.empty());
+    ASSERT_TRUE(other.empty());
+    ASSERT_EQ(pool.at(0u), entt::entity{3});
+    ASSERT_EQ(pool.get(entt::entity{3}), 3);
+    ASSERT_EQ(other.at(0u), static_cast<entt::entity>(entt::null));
+
+    other = entt::storage<int>{};
+    other.emplace(entt::entity{42}, 42);
     other = std::move(pool);
+
+    ASSERT_TRUE(pool.empty());
+    ASSERT_FALSE(other.empty());
+    ASSERT_EQ(pool.at(0u), static_cast<entt::entity>(entt::null));
+    ASSERT_EQ(other.at(0u), entt::entity{3});
+    ASSERT_EQ(other.get(entt::entity{3}), 3);
 }
 
 TEST(Storage, EmptyType) {
@@ -120,34 +166,110 @@ TEST(Storage, InsertEmptyType) {
     ASSERT_EQ(pool.size(), 2u);
 }
 
-TEST(Storage, Remove) {
+TEST(Storage, Erase) {
     entt::storage<int> pool;
-    entt::sparse_set &base = pool;
+    entt::entity entities[3];
 
-    pool.emplace(entt::entity{3});
-    pool.emplace(entt::entity{42});
-    base.remove(base.begin(), base.end());
+    entities[0] = entt::entity{3};
+    entities[1] = entt::entity{42};
+    entities[2] = entt::entity{9};
 
+    pool.emplace(entities[0]);
+    pool.emplace(entities[1]);
+    pool.emplace(entities[2]);
+    pool.erase(std::begin(entities), std::end(entities));
+
+    ASSERT_DEATH(pool.erase(std::begin(entities), std::end(entities)), "");
     ASSERT_TRUE(pool.empty());
 
-    pool.emplace(entt::entity{3}, 3);
-    pool.emplace(entt::entity{42}, 42);
-    pool.emplace(entt::entity{9}, 9);
-    base.remove(base.rbegin(), base.rbegin() + 2u);
+    pool.emplace(entities[0], 0);
+    pool.emplace(entities[1], 1);
+    pool.emplace(entities[2], 2);
+    pool.erase(entities, entities + 2u);
 
     ASSERT_FALSE(pool.empty());
-    ASSERT_EQ(*pool.begin(), 9);
+    ASSERT_EQ(*pool.begin(), 2);
+
+    pool.erase(entities[2]);
+
+    ASSERT_DEATH(pool.erase(entities[2]), "");
+    ASSERT_TRUE(pool.empty());
+
+    pool.emplace(entities[0], 0);
+    pool.emplace(entities[1], 1);
+    pool.emplace(entities[2], 2);
+    std::swap(entities[1], entities[2]);
+    pool.erase(entities, entities + 2u);
+
+    ASSERT_FALSE(pool.empty());
+    ASSERT_EQ(*pool.begin(), 1);
+}
+
+TEST(Storage, Remove) {
+    entt::storage<int> pool;
+    entt::entity entities[3];
+
+    entities[0] = entt::entity{3};
+    entities[1] = entt::entity{42};
+    entities[2] = entt::entity{9};
+
+    pool.emplace(entities[0]);
+    pool.emplace(entities[1]);
+    pool.emplace(entities[2]);
+
+    ASSERT_EQ(pool.remove(std::begin(entities), std::end(entities)), 3u);
+    ASSERT_EQ(pool.remove(std::begin(entities), std::end(entities)), 0u);
+    ASSERT_TRUE(pool.empty());
+
+    pool.emplace(entities[0], 0);
+    pool.emplace(entities[1], 1);
+    pool.emplace(entities[2], 2);
+
+    ASSERT_EQ(pool.remove(entities, entities + 2u), 2u);
+    ASSERT_FALSE(pool.empty());
+    ASSERT_EQ(*pool.begin(), 2);
+
+    ASSERT_EQ(pool.remove(entities[2]), 1u);
+    ASSERT_EQ(pool.remove(entities[2]), 0u);
+    ASSERT_TRUE(pool.empty());
+
+    pool.emplace(entities[0], 0);
+    pool.emplace(entities[1], 1);
+    pool.emplace(entities[2], 2);
+    std::swap(entities[1], entities[2]);
+
+    ASSERT_EQ(pool.remove(entities, entities + 2u), 2u);
+    ASSERT_FALSE(pool.empty());
+    ASSERT_EQ(*pool.begin(), 1);
+}
+
+TEST(Storage, ShrinkToFit) {
+    entt::storage<int> pool;
+
+    for(std::size_t next{}; next < ENTT_PACKED_PAGE; ++next) {
+        pool.emplace(entt::entity(next));
+    }
+
+    pool.emplace(entt::entity{ENTT_PACKED_PAGE});
+    pool.erase(entt::entity{ENTT_PACKED_PAGE});
+
+    ASSERT_EQ(pool.capacity(), 2 * ENTT_PACKED_PAGE);
+    ASSERT_EQ(pool.size(), ENTT_PACKED_PAGE);
+
+    pool.shrink_to_fit();
+
+    ASSERT_EQ(pool.capacity(), ENTT_PACKED_PAGE);
+    ASSERT_EQ(pool.size(), ENTT_PACKED_PAGE);
 
     pool.clear();
-    pool.emplace(entt::entity{3}, 3);
-    pool.emplace(entt::entity{42}, 42);
-    pool.emplace(entt::entity{9}, 9);
 
-    entt::entity entities[2]{entt::entity{3}, entt::entity{9}};
-    base.remove(std::begin(entities), std::end(entities));
+    ASSERT_EQ(pool.capacity(), ENTT_PACKED_PAGE);
+    ASSERT_EQ(pool.size(), 0u);
 
-    ASSERT_FALSE(pool.empty());
-    ASSERT_EQ(*pool.begin(), 42);
+    pool.shrink_to_fit();
+
+    ASSERT_EQ(pool.capacity(), 0u);
+    ASSERT_EQ(pool.size(), 0u);
 }
 
 TEST(Storage, AggregatesMustWork) {
@@ -160,7 +282,7 @@ TEST(Storage, TypesFromStandardTemplateLibraryMustWork) {
     // see #37 - this test shouldn't crash, that's all
     entt::storage<std::unordered_set<int>> pool;
     pool.emplace(entt::entity{0}).insert(42);
-    pool.remove(entt::entity{0});
+    pool.erase(entt::entity{0});
 }
 
 TEST(Storage, Iterator) {
@@ -342,9 +464,9 @@ TEST(Storage, Raw) {
     ASSERT_EQ(std::as_const(pool).get(entt::entity{12}), 6);
     ASSERT_EQ(pool.get(entt::entity{42}), 9);
 
-    ASSERT_EQ(pool.raw()[0u], 3);
-    ASSERT_EQ(std::as_const(pool).raw()[1u], 6);
-    ASSERT_EQ(pool.raw()[2u], 9);
+    ASSERT_EQ(pool.raw()[0u][0u], 3);
+    ASSERT_EQ(std::as_const(pool).raw()[0u][1u], 6);
+    ASSERT_EQ(pool.raw()[0u][2u], 9);
 }
 
 TEST(Storage, SortOrdered) {
@@ -352,7 +474,7 @@ TEST(Storage, SortOrdered) {
     entt::entity entities[5u]{entt::entity{12}, entt::entity{42}, entt::entity{7}, entt::entity{3}, entt::entity{9}};
     boxed_int values[5u]{{12}, {9}, {6}, {3}, {1}};
 
-    pool.insert(std::begin(entities), std::end(entities), std::begin(values), std::end(values));
+    pool.insert(std::begin(entities), std::end(entities), values);
     pool.sort([](auto lhs, auto rhs) { return lhs.value < rhs.value; });
 
     ASSERT_TRUE(std::equal(std::rbegin(entities), std::rend(entities), pool.entt::sparse_set::begin(), pool.entt::sparse_set::end()));
@@ -364,7 +486,7 @@ TEST(Storage, SortReverse) {
     entt::entity entities[5u]{entt::entity{12}, entt::entity{42}, entt::entity{7}, entt::entity{3}, entt::entity{9}};
     boxed_int values[5u]{{1}, {3}, {6}, {9}, {12}};
 
-    pool.insert(std::begin(entities), std::end(entities), std::begin(values), std::end(values));
+    pool.insert(std::begin(entities), std::end(entities), values);
     pool.sort([](auto lhs, auto rhs) { return lhs.value < rhs.value; });
 
     ASSERT_TRUE(std::equal(std::begin(entities), std::end(entities), pool.entt::sparse_set::begin(), pool.entt::sparse_set::end()));
@@ -376,7 +498,7 @@ TEST(Storage, SortUnordered) {
     entt::entity entities[5u]{entt::entity{12}, entt::entity{42}, entt::entity{7}, entt::entity{3}, entt::entity{9}};
     boxed_int values[5u]{{6}, {3}, {1}, {9}, {12}};
 
-    pool.insert(std::begin(entities), std::end(entities), std::begin(values), std::end(values));
+    pool.insert(std::begin(entities), std::end(entities), values);
     pool.sort([](auto lhs, auto rhs) { return lhs.value < rhs.value; });
 
     auto begin = pool.begin();
@@ -401,7 +523,7 @@ TEST(Storage, SortRange) {
     entt::entity entities[5u]{entt::entity{12}, entt::entity{42}, entt::entity{7}, entt::entity{3}, entt::entity{9}};
     boxed_int values[5u]{{3}, {6}, {1}, {9}, {12}};
 
-    pool.insert(std::begin(entities), std::end(entities), std::begin(values), std::end(values));
+    pool.insert(std::begin(entities), std::end(entities), values);
     pool.sort_n(0u, [](auto lhs, auto rhs) { return lhs.value < rhs.value; });
 
     ASSERT_TRUE(std::equal(std::rbegin(entities), std::rend(entities), pool.entt::sparse_set::begin(), pool.entt::sparse_set::end()));
@@ -409,9 +531,9 @@ TEST(Storage, SortRange) {
 
     pool.sort_n(2u, [](auto lhs, auto rhs) { return lhs.value < rhs.value; });
 
-    ASSERT_EQ(pool.raw()[0u], boxed_int{6});
-    ASSERT_EQ(pool.raw()[1u], boxed_int{3});
-    ASSERT_EQ(pool.raw()[2u], boxed_int{1});
+    ASSERT_EQ(pool.raw()[0u][0u], boxed_int{6});
+    ASSERT_EQ(pool.raw()[0u][1u], boxed_int{3});
+    ASSERT_EQ(pool.raw()[0u][2u], boxed_int{1});
 
     ASSERT_EQ(pool.data()[0u], entt::entity{42});
     ASSERT_EQ(pool.data()[1u], entt::entity{12});
@@ -442,7 +564,7 @@ TEST(Storage, RespectDisjoint) {
 
     entt::entity lhs_entities[3u]{entt::entity{3}, entt::entity{12}, entt::entity{42}};
     int lhs_values[3u]{3, 6, 9};
-    lhs.insert(std::begin(lhs_entities), std::end(lhs_entities), std::begin(lhs_values), std::end(lhs_values));
+    lhs.insert(std::begin(lhs_entities), std::end(lhs_entities), lhs_values);
 
     ASSERT_TRUE(std::equal(std::rbegin(lhs_entities), std::rend(lhs_entities), lhs.entt::sparse_set::begin(), lhs.entt::sparse_set::end()));
     ASSERT_TRUE(std::equal(std::rbegin(lhs_values), std::rend(lhs_values), lhs.begin(), lhs.end()));
@@ -459,11 +581,11 @@ TEST(Storage, RespectOverlap) {
 
     entt::entity lhs_entities[3u]{entt::entity{3}, entt::entity{12}, entt::entity{42}};
     int lhs_values[3u]{3, 6, 9};
-    lhs.insert(std::begin(lhs_entities), std::end(lhs_entities), std::begin(lhs_values), std::end(lhs_values));
+    lhs.insert(std::begin(lhs_entities), std::end(lhs_entities), lhs_values);
 
     entt::entity rhs_entities[1u]{entt::entity{12}};
     int rhs_values[1u]{6};
-    rhs.insert(std::begin(rhs_entities), std::end(rhs_entities), std::begin(rhs_values), std::end(rhs_values));
+    rhs.insert(std::begin(rhs_entities), std::end(rhs_entities), rhs_values);
 
     ASSERT_TRUE(std::equal(std::rbegin(lhs_entities), std::rend(lhs_entities), lhs.entt::sparse_set::begin(), lhs.entt::sparse_set::end()));
     ASSERT_TRUE(std::equal(std::rbegin(lhs_values), std::rend(lhs_values), lhs.begin(), lhs.end()));
@@ -492,11 +614,11 @@ TEST(Storage, RespectOrdered) {
 
     entt::entity lhs_entities[5u]{entt::entity{1}, entt::entity{2}, entt::entity{3}, entt::entity{4}, entt::entity{5}};
     int lhs_values[5u]{1, 2, 3, 4, 5};
-    lhs.insert(std::begin(lhs_entities), std::end(lhs_entities), std::begin(lhs_values), std::end(lhs_values));
+    lhs.insert(std::begin(lhs_entities), std::end(lhs_entities), lhs_values);
 
     entt::entity rhs_entities[6u]{entt::entity{6}, entt::entity{1}, entt::entity{2}, entt::entity{3}, entt::entity{4}, entt::entity{5}};
     int rhs_values[6u]{6, 1, 2, 3, 4, 5};
-    rhs.insert(std::begin(rhs_entities), std::end(rhs_entities), std::begin(rhs_values), std::end(rhs_values));
+    rhs.insert(std::begin(rhs_entities), std::end(rhs_entities), rhs_values);
 
     ASSERT_TRUE(std::equal(std::rbegin(lhs_entities), std::rend(lhs_entities), lhs.entt::sparse_set::begin(), lhs.entt::sparse_set::end()));
     ASSERT_TRUE(std::equal(std::rbegin(lhs_values), std::rend(lhs_values), lhs.begin(), lhs.end()));
@@ -516,11 +638,11 @@ TEST(Storage, RespectReverse) {
 
     entt::entity lhs_entities[5u]{entt::entity{1}, entt::entity{2}, entt::entity{3}, entt::entity{4}, entt::entity{5}};
     int lhs_values[5u]{1, 2, 3, 4, 5};
-    lhs.insert(std::begin(lhs_entities), std::end(lhs_entities), std::begin(lhs_values), std::end(lhs_values));
+    lhs.insert(std::begin(lhs_entities), std::end(lhs_entities), lhs_values);
 
     entt::entity rhs_entities[6u]{entt::entity{5}, entt::entity{4}, entt::entity{3}, entt::entity{2}, entt::entity{1}, entt::entity{6}};
     int rhs_values[6u]{5, 4, 3, 2, 1, 6};
-    rhs.insert(std::begin(rhs_entities), std::end(rhs_entities), std::begin(rhs_values), std::end(rhs_values));
+    rhs.insert(std::begin(rhs_entities), std::end(rhs_entities), rhs_values);
 
     ASSERT_TRUE(std::equal(std::rbegin(lhs_entities), std::rend(lhs_entities), lhs.entt::sparse_set::begin(), lhs.entt::sparse_set::end()));
     ASSERT_TRUE(std::equal(std::rbegin(lhs_values), std::rend(lhs_values), lhs.begin(), lhs.end()));
@@ -555,11 +677,11 @@ TEST(Storage, RespectUnordered) {
 
     entt::entity lhs_entities[5u]{entt::entity{1}, entt::entity{2}, entt::entity{3}, entt::entity{4}, entt::entity{5}};
     int lhs_values[5u]{1, 2, 3, 4, 5};
-    lhs.insert(std::begin(lhs_entities), std::end(lhs_entities), std::begin(lhs_values), std::end(lhs_values));
+    lhs.insert(std::begin(lhs_entities), std::end(lhs_entities), lhs_values);
 
     entt::entity rhs_entities[6u]{entt::entity{3}, entt::entity{2}, entt::entity{6}, entt::entity{1}, entt::entity{4}, entt::entity{5}};
     int rhs_values[6u]{3, 2, 6, 1, 4, 5};
-    rhs.insert(std::begin(rhs_entities), std::end(rhs_entities), std::begin(rhs_values), std::end(rhs_values));
+    rhs.insert(std::begin(rhs_entities), std::end(rhs_entities), rhs_values);
 
     ASSERT_TRUE(std::equal(std::rbegin(lhs_entities), std::rend(lhs_entities), lhs.entt::sparse_set::begin(), lhs.entt::sparse_set::end()));
     ASSERT_TRUE(std::equal(std::rbegin(lhs_values), std::rend(lhs_values), lhs.begin(), lhs.end()));
@@ -592,12 +714,12 @@ TEST(Storage, CanModifyDuringIteration) {
     entt::storage<int> pool;
     pool.emplace(entt::entity{0}, 42);
 
-    ASSERT_EQ(pool.capacity(), 1u);
+    ASSERT_EQ(pool.capacity(), ENTT_PACKED_PAGE);
 
     const auto it = pool.cbegin();
-    pool.reserve(2u);
+    pool.reserve(ENTT_PACKED_PAGE + 1u);
 
-    ASSERT_EQ(pool.capacity(), 2u);
+    ASSERT_EQ(pool.capacity(), 2 * ENTT_PACKED_PAGE);
 
     // this should crash with asan enabled if we break the constraint
     const auto entity = *it;
@@ -638,7 +760,7 @@ TEST(Storage, MoveOnlyComponent) {
     (void)pool;
 }
 
-TEST(Storage, ConstructorExceptionDoesNotAddToStorage) {
+TEST(Storage, EmplaceStrongExceptionGuarantee) {
     entt::storage<throwing_component> pool;
 
     try {
@@ -648,4 +770,29 @@ TEST(Storage, ConstructorExceptionDoesNotAddToStorage) {
     }
 
     ASSERT_TRUE(pool.empty());
+}
+
+TEST(Storage, UpdateFromDestructor) {
+    static constexpr auto size = 10u;
+
+    auto test = [](const auto target) {
+        entt::storage<update_from_destructor> pool;
+
+        for(std::size_t next{}; next < size; ++next) {
+            pool.emplace(entt::entity(next), &pool);
+        }
+
+        for(std::size_t next{}; next < size; ++next) {
+            ASSERT_EQ(pool.get(entt::entity(next)).target, entt::entity{entt::null});
+        }
+
+        pool.get(entt::entity(size/2)).target = target;
+        pool.erase(entt::entity(size/2));
+
+        ASSERT_EQ(pool.size(), size - 1u - (target != entt::null));
+    };
+
+    test(entt::null);
+    test(entt::entity(size - 1u));
+    test(entt::entity{0u});
 }

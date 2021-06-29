@@ -44,14 +44,14 @@ TEST(SingleComponentView, Functionalities) {
         ASSERT_TRUE(cview.get<const char>(entity) == '1' || std::get<const char &>(cview.get(entity)) == '2');
     }
 
-    ASSERT_EQ(*(view.data() + 0), e1);
-    ASSERT_EQ(*(view.data() + 1), e0);
+    ASSERT_EQ(view.data()[0u], e1);
+    ASSERT_EQ(view.data()[1u], e0);
 
-    ASSERT_EQ(*(view.raw() + 0), '2');
-    ASSERT_EQ(*(cview.raw() + 1), '1');
+    ASSERT_EQ(view.raw()[0u][0u], '2');
+    ASSERT_EQ(cview.raw()[0u][1u], '1');
 
-    registry.remove<char>(e0);
-    registry.remove<char>(e1);
+    registry.erase<char>(e0);
+    registry.erase<char>(e1);
 
     ASSERT_EQ(view.begin(), view.end());
     ASSERT_EQ(view.rbegin(), view.rend());
@@ -73,19 +73,17 @@ TEST(SingleComponentView, RawData) {
 
     ASSERT_EQ(view.size(), 0u);
     ASSERT_EQ(cview.size(), 0u);
-    ASSERT_EQ(view.raw(), nullptr);
-    ASSERT_EQ(cview.raw(), nullptr);
-    ASSERT_EQ(view.data(), nullptr);
-    ASSERT_EQ(cview.data(), nullptr);
+    ASSERT_EQ(view.raw(), cview.raw());
+    ASSERT_EQ(view.data(), cview.data());
 
     registry.emplace<int>(entity, 42);
 
     ASSERT_NE(view.size(), 0u);
     ASSERT_NE(cview.size(), 0u);
-    ASSERT_EQ(*view.raw(), 42);
-    ASSERT_EQ(*cview.raw(), 42);
-    ASSERT_EQ(*view.data(), entity);
-    ASSERT_EQ(*cview.data(), entity);
+    ASSERT_EQ(view.raw()[0u][0u], 42);
+    ASSERT_EQ(cview.raw()[0u][0u], 42);
+    ASSERT_EQ(view.data()[0u], entity);
+    ASSERT_EQ(cview.data()[0u], entity);
 
     registry.destroy(entity);
 
@@ -226,15 +224,15 @@ TEST(SingleComponentView, ConstNonConstAndAllInBetween) {
     ASSERT_EQ(view.size(), 1u);
     ASSERT_EQ(cview.size(), 1u);
 
-    static_assert(std::is_same_v<typename decltype(view)::raw_type, int>);
-    static_assert(std::is_same_v<typename decltype(cview)::raw_type, const int>);
+    static_assert(std::is_same_v<decltype(view.raw()), int **>);
+    static_assert(std::is_same_v<decltype(cview.raw()), const int * const *>);
 
     static_assert(std::is_same_v<decltype(view.get<int>({})), int &>);
     static_assert(std::is_same_v<decltype(view.get({})), std::tuple<int &>>);
-    static_assert(std::is_same_v<decltype(view.raw()), int *>);
+    static_assert(std::is_same_v<decltype(view.raw()), int **>);
     static_assert(std::is_same_v<decltype(cview.get<const int>({})), const int &>);
     static_assert(std::is_same_v<decltype(cview.get({})), std::tuple<const int &>>);
-    static_assert(std::is_same_v<decltype(cview.raw()), const int *>);
+    static_assert(std::is_same_v<decltype(cview.raw()), const int * const *>);
 
     view.each([](auto &&i) {
         static_assert(std::is_same_v<decltype(i), int &>);
@@ -268,9 +266,6 @@ TEST(SingleComponentView, ConstNonConstAndAllInBetweenWithEmptyType) {
     ASSERT_EQ(view.size(), 1u);
     ASSERT_EQ(cview.size(), 1u);
 
-    static_assert(std::is_same_v<typename decltype(view)::raw_type, empty_type>);
-    static_assert(std::is_same_v<typename decltype(cview)::raw_type, const empty_type>);
-
     static_assert(std::is_same_v<decltype(view.get({})), std::tuple<>>);
     static_assert(std::is_same_v<decltype(cview.get({})), std::tuple<>>);
 
@@ -299,7 +294,7 @@ TEST(SingleComponentView, Find) {
     const auto e3 = registry.create();
     registry.emplace<int>(e3);
 
-    registry.remove<int>(e1);
+    registry.erase<int>(e1);
 
     ASSERT_NE(view.find(e0), view.end());
     ASSERT_EQ(view.find(e1), view.end());
@@ -763,7 +758,7 @@ TEST(MultiComponentView, Find) {
     registry.emplace<int>(e3);
     registry.emplace<char>(e3);
 
-    registry.remove<int>(e1);
+    registry.erase<int>(e1);
 
     ASSERT_NE(view.find(e0), view.end());
     ASSERT_EQ(view.find(e1), view.end());
@@ -819,8 +814,8 @@ TEST(MultiComponentView, ExcludedComponents) {
 
     registry.emplace<char>(e0);
     registry.emplace<char>(e2);
-    registry.remove<char>(e1);
-    registry.remove<char>(e3);
+    registry.erase<char>(e1);
+    registry.erase<char>(e3);
 
     for(const auto entity: view) {
         ASSERT_TRUE(entity == e1 || entity == e3);
